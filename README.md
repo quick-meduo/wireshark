@@ -58,6 +58,17 @@ Developer's Guide at https://www.wireshark.org/docs/wsdg_html_chunked/
 See also the appropriate README._OS_ files for OS-specific installation
 instructions.
 
+AppImange Build
+-----
+1. clone the repo
+2. cmake . to create Makefile
+3. make to build wireshark in source root directory,
+   the output will be put at <source root>/run directory
+4. cp all files under <source root>/run to <source root>/AppDir/bin
+5. appimage-build --skip-tests
+
+if the dta image wont work, redo step 4 and 5 again to fix it
+
 Usage
 -----
 
