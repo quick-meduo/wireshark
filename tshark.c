@@ -134,6 +134,7 @@
 #define LONGOPT_ELASTIC_MAPPING_FILTER  LONGOPT_BASE_APPLICATION+4
 #define LONGOPT_EXPORT_TLS_SESSION_KEYS LONGOPT_BASE_APPLICATION+5
 #define LONGOPT_CAPTURE_COMMENT         LONGOPT_BASE_APPLICATION+6
+#define LONGOPT_JSON_PIPE               LONGOPT_BASE_APPLICATION+7
 
 capture_file cfile;
 
@@ -185,6 +186,8 @@ static gboolean no_duplicate_keys = FALSE;
 static proto_node_children_grouper_func node_children_grouper = proto_node_group_children_by_unique;
 
 static json_dumper jdumper;
+static char *out_json_pipe_name = NULL;
+static FILE *out_json_pipe_fd   = NULL;
 
 /* The line separator used between packets, changeable via the -S option */
 static const char *separator = "";
@@ -419,6 +422,7 @@ print_usage(FILE *output)
   fprintf(output, "                           (or '-' for stdout)\n");
   fprintf(output, "  --capture-comment <comment>\n");
   fprintf(output, "                           add a capture file comment, if supported\n");
+  fprintf(output, "  --json-pipe-line <pipe>  pipe line the json redirected to\n");
   fprintf(output, "  -C <config profile>      start with specified configuration profile\n");
   fprintf(output, "  -F <output file type>    set the output file type, default is pcapng\n");
   fprintf(output, "                           an empty \"-F\" option will list the file types\n");
@@ -700,6 +704,7 @@ main(int argc, char *argv[])
     {"no-duplicate-keys", ws_no_argument, NULL, LONGOPT_NO_DUPLICATE_KEYS},
     {"elastic-mapping-filter", ws_required_argument, NULL, LONGOPT_ELASTIC_MAPPING_FILTER},
     {"capture-comment", ws_required_argument, NULL, LONGOPT_CAPTURE_COMMENT},
+    {"json-pipe-line", ws_required_argument, NULL, LONGOPT_JSON_PIPE},
     {0, 0, 0, 0 }
   };
   gboolean             arg_error = FALSE;
@@ -1470,6 +1475,12 @@ main(int argc, char *argv[])
       }
       g_ptr_array_add(capture_comments, g_strdup(ws_optarg));
       break;
+	case LONGOPT_JSON_PIPE:  /* JSON redirectoin pipe */
+      if (out_json_pipe_name == NULL) {
+        out_json_pipe_name = g_strdup(ws_optarg);
+        printf("!!!!! %s",out_json_pipe_name);
+      }
+      break;
     default:
     case '?':        /* Bad flag - print usage message */
       switch(ws_optopt) {
@@ -1583,7 +1594,7 @@ main(int argc, char *argv[])
        output, reject the request.  At best, we could redirect that
        to the standard error; we *can't* write both to the standard
        output and have either of them be useful. */
-    if (strcmp(save_file, "-") == 0 && print_packet_info) {
+    if (strcmp(save_file, "-") == 0 && print_packet_info && out_json_pipe_name == NULL) {
       cmdarg_err("You can't write both raw packet data and dissected packets"
           " to the standard output.");
       exit_status = INVALID_OPTION;
@@ -2328,6 +2339,10 @@ main(int argc, char *argv[])
   output_fields = NULL;
 
 clean_exit:
+  if(out_json_pipe_fd != NULL){
+    fclose(out_json_pipe_fd);
+    out_json_pipe_fd = NULL;
+  }
   cf_close(&cfile);
   g_free(cf_name);
   destroy_print_stream(print_stream);
@@ -3922,7 +3937,16 @@ write_preamble(capture_file *cf)
 
   case WRITE_JSON:
   case WRITE_JSON_RAW:
-    jdumper = write_json_preamble(stdout);
+    if(out_json_pipe_name != NULL){
+      out_json_pipe_fd = fopen(out_json_pipe_name,"a");
+      if(out_json_pipe_fd != NULL){
+        jdumper = write_json_preamble(out_json_pipe_fd);
+      }else{
+        jdumper = write_json_preamble(stdout);
+      }
+    }else {
+      jdumper = write_json_preamble(stdout);
+    }
     return !ferror(stdout);
 
   case WRITE_EK:
